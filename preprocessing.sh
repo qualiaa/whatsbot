@@ -2,7 +2,6 @@
 
 set -eu
 
-SCRIPTS_DIR="scripts"
 DATA_DIR="data"
 
 # Input file: WhatsApp text dump
@@ -11,9 +10,15 @@ INPUT_FILE="${DATA_DIR}/raw_input.txt"
 # Output files:
 #  - Vocab file mapping word to token
 #  - Token file: conversion of input file to tokens
+#  - Temp file for storing split words
+
 VOCAB_FILE="${DATA_DIR}/vocab.txt"
 TOKEN_FILE="${DATA_DIR}/network_input.txt"
+
 TEMP_FILE=$(mktemp)
+
+# Scripts:
+SCRIPTS_DIR="scripts"
 
 SPLIT_WORDS="${SCRIPTS_DIR}/split_words.sed"
 GENERATE_VOCAB="${SCRIPTS_DIR}/generate_vocab.py"
@@ -41,7 +46,8 @@ function generate_vocab() {
 }
 
 function tokenize_data() {
-    # Use the vocabulatry
+    # Using the vocabulary file (first argument), tokenize the split words file
+    # (second argument)
     awk -f "$TOKENIZE_DATA" "$1" "$2"
 }
 

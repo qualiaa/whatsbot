@@ -1,8 +1,16 @@
 #!/usr/bin/env awk -f
 
-FNR == NR { vocab[$2] = $1; vocab_size=max($1,vocab_size);  next }
+# Store vocabulary from first input file
+FNR == NR {
+    vocab[$2] = $1
+    vocab_size=max($1,vocab_size)
+    next
+}
+
+# Once finished processing vocabulary, create unknown word token
 FNR == 1 { UNKNOWN_WORD = vocab_size+1 }
 
+# Convert words in subsequent files to tokens
 {
     ORS=" "
     split($0,words)
