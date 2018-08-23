@@ -12,7 +12,6 @@ FNR == 1 { UNKNOWN_WORD = vocab_size+1 }
 
 # Convert words in subsequent files to tokens
 {
-    ORS=" "
     split($0,words)
     for (word in words) {
         print wordToToken(words[word])
