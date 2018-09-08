@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import sys
+import functools
+
 import numpy as np
 import tensorflow as tf
 
@@ -13,47 +15,47 @@ with open("data/vocab.txt") as f:
             sys.exit(1)
 
 vocab.append("UNKNOWN")
-    
+
 with open("data/network_input.txt") as f:
     all_data=[int(token) for token in f.readlines()]
 
-def batch_dataset(all_data, examples_per_batch, words_per_example):
-    num_words = len(all_data)
 
-    words_per_batch = examples_per_batch * words_per_example
-    
-    num_batches = num_words // words_per_batch
+def batch_dataset(dataset, examples_per_batch, timesteps_per_example, num_timesteps):
+    timesteps_per_batch = examples_per_batch * timesteps_per_example
+
+    num_batches = num_timesteps // timesteps_per_batch
     num_examples = examples_per_batch * num_batches
-    num_words = (words_per_batch * num_batches) + 1 # drop extra words
+    num_timesteps = (timesteps_per_batch * num_batches) + 1 # drop extra timesteps
     print(num_batches)
     print(num_examples)
-    print(num_words)
+    print(num_timesteps)
 
     batch_stride = num_batches
 
-    words = tf.data.Dataset.from_tensor_slices(all_data[:num_words])
-    examples = (tf.data.Dataset.zip((words,words.skip(1)))
-            .batch(words_per_example))
-    
-    example_shards = examples.batch(batch_stride)
-    
+    examples = (tf.data.Dataset.zip((dataset, dataset.skip(1)))
+            .batch(timesteps_per_example, drop_remainder=True))
+
+    example_shards = examples.batch(batch_stride, drop_remainder=True)
+
     strided_examples = example_shards.interleave(
             lambda *a: tf.data.Dataset.from_tensor_slices(a),
             cycle_length=examples_per_batch)
 
     batches = (strided_examples
-            .batch(examples_per_batch))
+            .batch(examples_per_batch, drop_remainder=True))
 
     return batches
 
-batches = batch_dataset(all_data, 100, 20)
-dataset_batch = batches.make_one_shot_iterator().get_next()
+def to_rnn_input(*args,**kargs):
+    return functools.partial(batch_dataset,*args,**kargs)
 
-with tf.Session() as sess:
-    try:
-        while True:
-            a = sess.run(dataset_batch)
-    except tf.errors.OutOfRangeError: pass
+dataset = tf.data.Dataset.from_tensor_slices(all_data)
+batches = dataset.apply(
+        to_rnn_input(examples_per_batch=100,
+                     timesteps_per_example=20,
+                     num_timesteps=len(all_data)))
+
+dataset_batch = batches.make_one_shot_iterator().get_next()
 
 """
 # old method modified from adventuresinmachinelearning
