@@ -42,7 +42,7 @@ function generate_vocab() {
     # maintain capitalisation of words only appearing capitalised
     # but discard them if there is a lowercase equivalent
     tr ' ' '\n' | # put each word on a separate line
-    python "$GENERATE_VOCAB"
+        python "$GENERATE_VOCAB"
 }
 
 function tokenize_data() {
