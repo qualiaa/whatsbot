@@ -23,5 +23,5 @@ x = +x
 x = sorted(list(x.items()),key=lambda a: a[1],reverse=True)
 
 # give each output a unique ID
-for i, w in enumerate(a[0] for a in x):
+for i, w in enumerate((a[0] for a in x), start=1):
     print(i, w)

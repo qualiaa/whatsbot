@@ -8,7 +8,7 @@ FNR == NR {
 }
 
 # Once finished processing vocabulary, create unknown word token
-FNR == 1 { UNKNOWN_WORD = vocab_size+1 }
+FNR == 1 { UNKNOWN_WORD = 0 }
 
 # Convert words in subsequent files to tokens
 {

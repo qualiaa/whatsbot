@@ -14,13 +14,13 @@ EMBEDDING_OUTPUT_SIZE = 300
 vocab = ["UNKNOWN"]
 with open("data/vocab.txt") as f:
     try:
-    vocab.extend(line.split()[1] for line in f.readlines())
+        vocab.extend(line.split()[1] for line in f.readlines())
     except:
         print(line)
         sys.exit(1)
 
 with open("data/network_input.txt") as f:
-    all_data=[int(token)+1 for token in f.readlines()]
+    raw_data=[int(token) for token in f.readlines()]
 
 
 def batch_dataset(dataset, examples_per_batch, timesteps_per_example, num_timesteps):
