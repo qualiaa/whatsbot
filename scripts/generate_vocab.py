@@ -16,6 +16,6 @@ for y in x.keys():
 # ouput only words that occur enough times. Give each output a unique ID
 i = 0
 for y in x.keys():
-    if x[y] >= MINIMUM_OCCURRENCES:
+    if y != "" and x[y] >= MINIMUM_OCCURRENCES:
         print(i, y)
         i += 1
