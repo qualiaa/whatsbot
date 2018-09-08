@@ -3,21 +3,24 @@ import sys
 import functools
 
 import numpy as np
+import keras
 import tensorflow as tf
 
-vocab = []
-with open("data/vocab.txt") as f:
-    for line in f.readlines():
-        try:
-            vocab.append(line.split()[1])
-        except:
-            print(line)
-            sys.exit(1)
+from keras.layers import Embedding
 
-vocab.append("UNKNOWN")
+EMBEDDING_OUTPUT_SIZE = 300
+
+# keras assumes that first token is unknown
+vocab = ["UNKNOWN"]
+with open("data/vocab.txt") as f:
+    try:
+    vocab.extend(line.split()[1] for line in f.readlines())
+    except:
+        print(line)
+        sys.exit(1)
 
 with open("data/network_input.txt") as f:
-    all_data=[int(token) for token in f.readlines()]
+    all_data=[int(token)+1 for token in f.readlines()]
 
 
 def batch_dataset(dataset, examples_per_batch, timesteps_per_example, num_timesteps):
@@ -56,6 +59,10 @@ batches = dataset.apply(
                      num_timesteps=len(all_data)))
 
 dataset_batch = batches.make_one_shot_iterator().get_next()
+
+Embedding(len(vocab), EMBEDDING_OUTPUT_SIZE)
+
+sampling_table = keras.preprocessing.sequence.make_sampling_table(len(vocab))
 
 """
 # old method modified from adventuresinmachinelearning
