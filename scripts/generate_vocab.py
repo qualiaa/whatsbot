@@ -13,9 +13,15 @@ for y in x.keys():
         x[y.lower()] += x[y]
         x[y] = 0
 
-# ouput only words that occur enough times. Give each output a unique ID
-i = 0
-for y in x.keys():
-    if y != "" and x[y] >= MINIMUM_OCCURRENCES:
-        print(i, y)
-        i += 1
+# ouput only words that occur enough times.
+del x[""]
+
+x.subtract(list(x) * (MINIMUM_OCCURRENCES-1))
+x = +x
+
+# sort by count
+x = sorted(list(x.items()),key=lambda a: a[1],reverse=True)
+
+# give each output a unique ID
+for i, w in enumerate(a[0] for a in x):
+    print(i, w)
