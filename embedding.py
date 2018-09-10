@@ -3,19 +3,26 @@
 import random
 import numpy as np
 import tensorflow as tf
-import keras
+import keras as keras
 
-from keras import backend as K
-from keras.layers import Embedding, Input, dot, Dense, Flatten, Reshape
+from keras.layers import Embedding, Input, dot, Dense, Flatten, Reshape, Lambda
 
 import input
 
-EPOCHS = 2
+sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
+sess.as_default()
+a = tf.device("gpu")
+
+TOTAL_TRAIN_EXAMPLES=int(1e6)
+EXAMPLES_PER_EPOCH=int(5e5)
 BATCH_SIZE = 500
 EMBEDDING_OUTPUT_SIZE = 300
 SKIP_WINDOW=3
 NUM_VALIDATION_TOKENS=16
 NUM_SIMILAR_WORDS=8
+
+STEPS_PER_EPOCH=EXAMPLES_PER_EPOCH // BATCH_SIZE
+EPOCHS = TOTAL_TRAIN_EXAMPLES // EXAMPLES_PER_EPOCH
 
 tokenized_data, vocab = input.tokenized()
 vocab = np.array(vocab)
@@ -30,9 +37,18 @@ word_pairs, labels = keras.preprocessing.sequence.skipgrams(tokenized_data,
         shuffle=True)
 
 word_pairs = list(np.expand_dims(np.array(a, dtype=np.int16), 1) for a in zip(*word_pairs))
+""" necessary for tf.data.Dataset because nested inputs are broken
+word_pairs = np.stack(word_pairs)
+word_pairs = word_pairs.transpose((1,0,2))
+"""
 labels = np.expand_dims(np.array(labels, dtype=np.int16), 1)
 
 def negative_sampling_model():
+    """ necessary for tf.data.Dataset because nested inputs are broken
+    joined_input = Input((2,1))
+    chan0 = Lambda(lambda x: x[:,0,:], output_shape=(1,))
+    chan1 = Lambda(lambda x: x[:,1,:], output_shape=(1,))
+    """
     target_word = Input((1,))
     context_word = Input((1,))
     embedding = Embedding(len(vocab), EMBEDDING_OUTPUT_SIZE,
@@ -52,8 +68,6 @@ def negative_sampling_model():
 
     return train_model, validation_model
 
-train_model, validation_model = negative_sampling_model()
-
 validation_tokens = list(range(24,4*16+1,4))#random.sample(range(1,len(vocab)), 16)
 
 def get_token_similarities(tokens):
@@ -66,17 +80,43 @@ def get_token_similarities(tokens):
     return similarities
 
 def find_similar_words(epoch, _):
-    #if (epoch+1) % 4 != 0: return
+    if (epoch+1) % 5 != 0: return
 
     similarities = get_token_similarities(validation_tokens)
     sorted_tokens = similarities.argsort(axis=1)
     top_k = sorted_tokens[:,-1:-2-NUM_SIMILAR_WORDS:-1]
     print(vocab[top_k])
 
-train_model.compile("rmsprop", "binary_crossentropy")
+train_model, validation_model = negative_sampling_model()
 
-train_model.fit(x=word_pairs,
-                y=labels,
+train_model.compile(optimizer="rmsprop", loss="binary_crossentropy")
+
+""" this doesn't work with tf.keras for some reason """
+train_model.fit(x=word_pairs, y=labels,
                 batch_size=BATCH_SIZE,
                 epochs=EPOCHS,
                 callbacks=[keras.callbacks.LambdaCallback(on_epoch_end=find_similar_words)])
+
+""" the way tf.data.Dataset *should* train
+data = (tf.data.Dataset.from_tensor_slices((word_pairs, labels))
+        .batch(BATCH_SIZE)
+        .repeat())
+
+train_model.fit(data,
+                steps_per_epoch=STEPS_PER_EPOCH,
+                epochs=EPOCHS,
+                callbacks=[keras.callbacks.LambdaCallback(on_epoch_end=find_similar_words)])
+
+"""
+
+""" the way you actually have to train it
+next_batch = data.make_one_shot_iterator().get_next()
+for i in range(EPOCHS):
+    print("Epoch {}/{}".format(i,EPOCHS))
+    for j in range(STEPS_PER_EPOCH):
+        batch = sess.run(next_batch)
+        history = train_model.fit(x=batch[0],y=batch[1],batch_size=BATCH_SIZE, verbose=0)
+        print("\r{}/{} {}".format(j,STEPS_PER_EPOCH,history.history), end="")
+    print()
+    find_similar_words(i)
+"""
