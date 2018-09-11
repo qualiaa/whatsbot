@@ -9,10 +9,6 @@ from keras.layers import Embedding, Input, dot, Dense, Flatten, Reshape, Lambda
 
 import input
 
-sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
-sess.as_default()
-a = tf.device("gpu")
-
 TOTAL_TRAIN_EXAMPLES=int(1e6)
 EXAMPLES_PER_EPOCH=int(5e5)
 BATCH_SIZE = 500
@@ -26,8 +22,6 @@ EPOCHS = TOTAL_TRAIN_EXAMPLES // EXAMPLES_PER_EPOCH
 
 tokenized_data, vocab = input.tokenized()
 vocab = np.array(vocab)
-
-dataset = tf.data.Dataset.from_tensor_slices(tokenized_data)
 
 sampling_table = keras.preprocessing.sequence.make_sampling_table(len(vocab))
 word_pairs, labels = keras.preprocessing.sequence.skipgrams(tokenized_data,
@@ -70,32 +64,52 @@ def negative_sampling_model():
 
 validation_tokens = list(range(24,4*16+1,4))#random.sample(range(1,len(vocab)), 16)
 
-def get_token_similarities(tokens):
-    word_target = np.array(tokens)
-    word_context = np.empty_like(word_target)
-    similarities = np.empty((len(tokens),len(vocab)))
-    for i in range(1, len(vocab)):
-        word_context.fill(i)
-        similarities[:,i] = validation_model.predict_on_batch([word_target, word_context])
-    return similarities
+class SimilarityCallback(keras.callbacks.Callback):
+    def __init__(self, model):
+        self.model=model
 
-def find_similar_words(epoch, _):
-    if (epoch+1) % 5 != 0: return
+    def on_epoch_end(self, epoch, _):
+        self._find_similar_words(epoch)
+        
 
-    similarities = get_token_similarities(validation_tokens)
-    sorted_tokens = similarities.argsort(axis=1)
-    top_k = sorted_tokens[:,-1:-2-NUM_SIMILAR_WORDS:-1]
-    print(vocab[top_k])
+    def _get_token_similarities(self, tokens):
+        word_target = np.array(tokens)
+        word_context = np.empty_like(word_target)
+        similarities = np.empty((len(tokens),len(vocab)))
+        for i in range(1, len(vocab)):
+            word_context.fill(i)
+            """ between two commits ago (5ef812a) and now (5f07b2a) the shape of
+                the network output has changed from (batch,) to (batch_size,1)
+                despite no change to network definition? And this doesn't use
+                the same weights as the train model so the output is jibberish now"""
+            v = self.model.predict_on_batch([word_target, word_context])
+            similarities[:,i] = np.squeeze(v)
+        return similarities
 
-train_model, validation_model = negative_sampling_model()
+    def _find_similar_words(self, epoch):
+        #if (epoch+1) % 5 != 0: return
 
-train_model.compile(optimizer="rmsprop", loss="binary_crossentropy")
+        similarities = self._get_token_similarities(validation_tokens)
+        sorted_tokens = similarities.argsort(axis=1)
+        top_k = sorted_tokens[:,-1:-2-NUM_SIMILAR_WORDS:-1]
+        print(vocab[top_k])
 
-""" this doesn't work with tf.keras for some reason """
-train_model.fit(x=word_pairs, y=labels,
-                batch_size=BATCH_SIZE,
-                epochs=EPOCHS,
-                callbacks=[keras.callbacks.LambdaCallback(on_epoch_end=find_similar_words)])
+def learn_embedding(output_path="data/embedding.np"):
+    train_model, validation_model = negative_sampling_model()
+
+    train_model.compile(optimizer="rmsprop", loss="binary_crossentropy")
+
+    """ this doesn't work with tf.keras for some reason """
+    train_model.fit(x=word_pairs, y=labels,
+                    batch_size=BATCH_SIZE,
+                    epochs=EPOCHS,
+                    callbacks=[SimilarityCallback(validation_model)])
+
+    embedding_layer = next(embedding_layer for embedding_layer in
+        train_model.layers if isinstance(embedding_layer, Embedding))
+    weights = embedding_layer.get_weights()
+    np.save(output_path, weights)
+
 
 """ the way tf.data.Dataset *should* train
 data = (tf.data.Dataset.from_tensor_slices((word_pairs, labels))
@@ -105,7 +119,7 @@ data = (tf.data.Dataset.from_tensor_slices((word_pairs, labels))
 train_model.fit(data,
                 steps_per_epoch=STEPS_PER_EPOCH,
                 epochs=EPOCHS,
-                callbacks=[keras.callbacks.LambdaCallback(on_epoch_end=find_similar_words)])
+                callbacks=[keras.callbacks.LambdaCallback(on_epoch_end=_find_similar_words)])
 
 """
 
@@ -118,5 +132,8 @@ for i in range(EPOCHS):
         history = train_model.fit(x=batch[0],y=batch[1],batch_size=BATCH_SIZE, verbose=0)
         print("\r{}/{} {}".format(j,STEPS_PER_EPOCH,history.history), end="")
     print()
-    find_similar_words(i)
+    _find_similar_words(i)
 """
+
+if __name__ == "__main__":
+    learn_embedding()
