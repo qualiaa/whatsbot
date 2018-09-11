@@ -66,7 +66,8 @@ validation_tokens = list(range(24,4*16+1,4))#random.sample(range(1,len(vocab)), 
 
 class SimilarityCallback(keras.callbacks.Callback):
     def __init__(self, model):
-        self.model=model
+        super().__init__()
+        self.validation_model=model
 
     def on_epoch_end(self, epoch, _):
         self._find_similar_words(epoch)
@@ -78,12 +79,7 @@ class SimilarityCallback(keras.callbacks.Callback):
         similarities = np.empty((len(tokens),len(vocab)))
         for i in range(1, len(vocab)):
             word_context.fill(i)
-            """ between two commits ago (5ef812a) and now (5f07b2a) the shape of
-                the network output has changed from (batch,) to (batch_size,1)
-                despite no change to network definition? And this doesn't use
-                the same weights as the train model so the output is jibberish now"""
-            v = self.model.predict_on_batch([word_target, word_context])
-            similarities[:,i] = np.squeeze(v)
+            similarities[:,i] = self.validation_model.predict_on_batch([word_target, word_context])
         return similarities
 
     def _find_similar_words(self, epoch):
