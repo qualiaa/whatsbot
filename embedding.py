@@ -116,6 +116,8 @@ def train(output_path="weights/embedding"):
     weights = embedding_layer.get_weights()
     np.save(output_path, weights)
 
+def load(embedding_path="weights/embedding.npy"):
+    return np.load(embedding_path)
 
 """ the way tf.data.Dataset *should* train
 data = (tf.data.Dataset.from_tensor_slices((word_pairs, labels))
