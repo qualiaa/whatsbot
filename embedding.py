@@ -90,7 +90,7 @@ class SimilarityCallback(keras.callbacks.Callback):
         top_k = sorted_tokens[:,-1:-2-NUM_SIMILAR_WORDS:-1]
         print(vocab[top_k])
 
-def learn_embedding(output_path="data/embedding.np"):
+def learn_embedding(output_path="weights/embedding"):
     train_model, validation_model = negative_sampling_model()
 
     train_model.compile(optimizer="rmsprop", loss="binary_crossentropy")
