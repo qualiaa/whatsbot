@@ -21,7 +21,7 @@ def tokenized():
 
     return tokenized_data, vocab
 
-def batch_dataset(dataset, examples_per_batch, timesteps_per_example, num_timesteps):
+def batch_dataset(examples_per_batch, timesteps_per_example, num_timesteps, dataset):
     timesteps_per_batch = examples_per_batch * timesteps_per_example
 
     num_batches = num_timesteps // timesteps_per_batch
