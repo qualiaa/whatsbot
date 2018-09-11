@@ -20,24 +20,7 @@ NUM_SIMILAR_WORDS=8
 STEPS_PER_EPOCH=EXAMPLES_PER_EPOCH // BATCH_SIZE
 EPOCHS = TOTAL_TRAIN_EXAMPLES // EXAMPLES_PER_EPOCH
 
-tokenized_data, vocab = input.tokenized()
-vocab = np.array(vocab)
-
-sampling_table = keras.preprocessing.sequence.make_sampling_table(len(vocab))
-word_pairs, labels = keras.preprocessing.sequence.skipgrams(tokenized_data,
-        len(vocab),
-        sampling_table=sampling_table,
-        window_size=SKIP_WINDOW,
-        shuffle=True)
-
-word_pairs = list(np.expand_dims(np.array(a, dtype=np.int16), 1) for a in zip(*word_pairs))
-""" necessary for tf.data.Dataset because nested inputs are broken
-word_pairs = np.stack(word_pairs)
-word_pairs = word_pairs.transpose((1,0,2))
-"""
-labels = np.expand_dims(np.array(labels, dtype=np.int16), 1)
-
-def negative_sampling_model():
+def negative_sampling_model(input_size, output_size):
     """ necessary for tf.data.Dataset because nested inputs are broken
     joined_input = Input((2,1))
     chan0 = Lambda(lambda x: x[:,0,:], output_shape=(1,))
@@ -45,7 +28,7 @@ def negative_sampling_model():
     """
     target_word = Input((1,))
     context_word = Input((1,))
-    embedding = Embedding(len(vocab), EMBEDDING_OUTPUT_SIZE,
+    embedding = Embedding(input_size, output_size,
             input_length=1,
             mask_zero=True)
 
@@ -62,22 +45,21 @@ def negative_sampling_model():
 
     return train_model, validation_model
 
-validation_tokens = list(range(24,4*16+1,4))#random.sample(range(1,len(vocab)), 16)
-
 class SimilarityCallback(keras.callbacks.Callback):
-    def __init__(self, model):
+    def __init__(self, vocab, validation_tokens, model):
         super().__init__()
-        self.validation_model=model
+        self.vocab = vocab
+        self.validation_model = model
+        self.validation_tokens = validation_tokens
 
     def on_epoch_end(self, epoch, _):
         self._find_similar_words(epoch)
         
-
     def _get_token_similarities(self, tokens):
         word_target = np.array(tokens)
         word_context = np.empty_like(word_target)
-        similarities = np.empty((len(tokens),len(vocab)))
-        for i in range(1, len(vocab)):
+        similarities = np.empty((len(tokens),len(self.vocab)))
+        for i in range(1, len(self.vocab)):
             word_context.fill(i)
             similarities[:,i] = self.validation_model.predict_on_batch([word_target, word_context])
         return similarities
@@ -85,22 +67,50 @@ class SimilarityCallback(keras.callbacks.Callback):
     def _find_similar_words(self, epoch):
         #if (epoch+1) % 5 != 0: return
 
-        similarities = self._get_token_similarities(validation_tokens)
+        similarities = self._get_token_similarities(self.validation_tokens)
         sorted_tokens = similarities.argsort(axis=1)
         top_k = sorted_tokens[:,-1:-2-NUM_SIMILAR_WORDS:-1]
-        print(vocab[top_k])
+        print(self.vocab[top_k])
 
 def train(output_path="weights/embedding"):
-    train_model, validation_model = negative_sampling_model()
+    tokenized_data, vocab = input.tokenized()
+    vocab = np.array(vocab)
 
+    validation_tokens = list(range(24,4*16+1,4))#random.sample(range(1,len(vocab)), 16)
+
+
+    # build negative sampling skipgrams
+    sampling_table = keras.preprocessing.sequence.make_sampling_table(len(vocab))
+    word_pairs, labels = keras.preprocessing.sequence.skipgrams(tokenized_data,
+            len(vocab),
+            sampling_table=sampling_table,
+            window_size=SKIP_WINDOW,
+            shuffle=True)
+
+    # convert to numpy arrays
+    # reshape pairs from (?,2) to ((?,1), (?,1)), labels from (?) to (?,1)
+    word_pairs = list(np.expand_dims(np.array(a, dtype=np.int16), axis=1)
+            for a in zip(*word_pairs))
+    """ necessary for tf.data.Dataset because nested inputs are broken
+    word_pairs = np.stack(word_pairs)
+    word_pairs = word_pairs.transpose((1,0,2))
+    """
+    labels = np.expand_dims(np.array(labels, dtype=np.int16), axis=1)
+
+    # train the model
+    train_model, validation_model = negative_sampling_model(len(vocab),
+            EMBEDDING_OUTPUT_SIZE)
     train_model.compile(optimizer="rmsprop", loss="binary_crossentropy")
 
     """ this doesn't work with tf.keras for some reason """
     train_model.fit(x=word_pairs, y=labels,
                     batch_size=BATCH_SIZE,
                     epochs=EPOCHS,
-                    callbacks=[SimilarityCallback(validation_model)])
+                    callbacks=[SimilarityCallback(vocab,
+                                                  validation_tokens,
+                                                  validation_model)])
 
+    # save the learned embedding layer weights
     embedding_layer = next(embedding_layer for embedding_layer in
         train_model.layers if isinstance(embedding_layer, Embedding))
     weights = embedding_layer.get_weights()
